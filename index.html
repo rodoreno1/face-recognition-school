@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Control de acceso CBTis — Reconocimiento facial</title>
+<meta name="description" content="Sistema de entradas y salidas por reconocimiento facial para planteles CBTis. Funciona en el navegador, sin enviar rostros a ningún servidor.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/asistencia.css">
+</head>
+<body>
+
+<header class="cabecera" id="cabecera"></header>
+<main class="vista" id="vista">
+  <div class="cargando"><div class="anillo"></div></div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/face-api.js"></script>
+<script src="js/db.js"></script>
+<script src="js/face.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
