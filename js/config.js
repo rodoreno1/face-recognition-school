@@ -9,6 +9,6 @@
    guardan solo en este navegador y las cuentas son admin@demo / caseta@demo
    con contraseña demo1234. */
 window.APP_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://dvdvoiaeynpbqdvlqhjo.supabase.co",
+  supabaseAnonKey: "sb_publishable_iqvjcbgegu14Yu200ONKiQ_BA9FcpIN",
 };
