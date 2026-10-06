@@ -96,7 +96,7 @@ const APIDemo = (() => {
   registros.agregarConCola = registros.agregar;
 
   const CFG_DEFAULT = {
-    plantel: "CBTis 002", entradaMatutino: "07:00", entradaVespertino: "13:30", toleranciaMin: 10,
+    plantel: "CBTis 002",
     umbral: 0.5, margen: 0.06, cooldownSeg: 60, confirmaciones: 3, sonido: true,
   };
   const config = {

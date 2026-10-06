@@ -2,9 +2,8 @@
 -- CBTis 002 access control — Supabase schema.
 --
 -- Paste the whole file into the SQL Editor of your project and run it. It is
--- safe to run again: it never deletes data. If the previous Spanish schema
--- (alumnos / registros / config / perfiles) is present, its data is copied
--- into the new tables and the old tables are dropped.
+-- safe to run again: it keeps your students, records and accounts. The only
+-- thing it removes are the columns of the retired late-arrival feature.
 --
 -- Accounts and roles:
 --   * The first account that signs up becomes an admin.
@@ -29,9 +28,6 @@ create table if not exists public.profiles (
 create table if not exists public.settings (
   id                    int primary key default 1 check (id = 1),
   school_name           text not null default 'CBTis 002',
-  morning_entry_time    time not null default '07:00',
-  afternoon_entry_time  time not null default '13:30',
-  tolerance_minutes     int  not null default 10,
   match_threshold       real not null default 0.5,   -- max face distance to accept a match
   match_margin          real not null default 0.06,  -- min lead over the second-best candidate
   cooldown_seconds      int  not null default 60,
@@ -63,7 +59,6 @@ create table if not exists public.attendance_records (
   type            text not null check (type in ('entry', 'exit')),
   recorded_at     timestamptz not null default now(),
   record_date     date not null,                  -- local date at the school (sent by the app)
-  late            boolean not null default false,
   source          text not null default 'face' check (source in ('face', 'manual')),
   distance        real,
   recorded_by     uuid default auth.uid()
@@ -149,56 +144,14 @@ create policy "attendance: read"          on public.attendance_records for selec
 create policy "attendance: insert"        on public.attendance_records for insert to authenticated with check (public.current_user_role() in ('admin', 'kiosk'));
 create policy "attendance: admin deletes" on public.attendance_records for delete to authenticated using (public.current_user_role() = 'admin');
 
--- ---------- Migration from the previous Spanish schema ----------------------
--- Copies whatever exists in alumnos / registros / config / perfiles and then
--- drops them. Does nothing when those tables are not present.
+-- ---------- Retired features -----------------------------------------------
+-- Late arrivals are no longer tracked.
 
-do $$
-begin
-  if to_regclass('public.perfiles') is not null then
-    insert into public.profiles (id, email, role, created_at)
-      select id, correo,
-             case rol when 'admin' then 'admin' when 'kiosco' then 'kiosk' else 'pending' end,
-             creado
-      from public.perfiles
-      on conflict (id) do update set role = excluded.role, email = coalesce(excluded.email, public.profiles.email);
-  end if;
-
-  if to_regclass('public.config') is not null then
-    update public.settings s
-       set school_name = c.plantel, morning_entry_time = c.entrada_matutino,
-           afternoon_entry_time = c.entrada_vespertino, tolerance_minutes = c.tolerancia_min,
-           match_threshold = c.umbral, match_margin = c.margen, cooldown_seconds = c.cooldown_seg,
-           confirmations = c.confirmaciones, sound_enabled = c.sonido
-      from public.config c
-     where s.id = 1 and c.id = 1;
-  end if;
-
-  if to_regclass('public.alumnos') is not null then
-    insert into public.students (id, student_number, full_name, group_name, semester, shift, photo, descriptors, active, created_at, updated_at)
-      select id, matricula, nombre, grupo, semestre,
-             case turno when 'Vespertino' then 'afternoon' else 'morning' end,
-             foto, descriptores, activo, creado, actualizado
-      from public.alumnos
-      on conflict (id) do nothing;
-  end if;
-
-  if to_regclass('public.registros') is not null then
-    insert into public.attendance_records (student_id, full_name, student_number, group_name, shift, type, recorded_at, record_date, late, source, distance, recorded_by)
-      select alumno_id, nombre, matricula, grupo,
-             case turno when 'Vespertino' then 'afternoon' else 'morning' end,
-             case tipo when 'salida' then 'exit' else 'entry' end,
-             ts, fecha, retardo,
-             case origen when 'manual' then 'manual' else 'face' end,
-             distancia, registrado_por
-      from public.registros
-      order by id;
-  end if;
-
-  drop trigger if exists t_al_crear_usuario on auth.users;
-  drop table if exists public.registros, public.alumnos, public.config, public.perfiles;
-  drop function if exists public.rol_actual(), public.hay_admin(), public.al_crear_usuario(), public.tocar_actualizado();
-end $$;
+alter table public.attendance_records drop column if exists late;
+alter table public.settings
+  drop column if exists morning_entry_time,
+  drop column if exists afternoon_entry_time,
+  drop column if exists tolerance_minutes;
 
 -- Accounts created before this script ran (if any) also need a profile.
 insert into public.profiles (id, email, role)

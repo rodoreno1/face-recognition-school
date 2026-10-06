@@ -18,14 +18,14 @@ locales, para verla funcionar.
   automático (alterna entrada/salida) o fijo. Pantalla completa. Si se cae el
   internet, los registros esperan en el equipo y se mandan al reconectar.
 - **Panel** (`#panel`): resumen del día que se actualiza solo (tiempo real):
-  dentro del plantel, entradas, salidas, retardos, ausentes; actividad
+  dentro del plantel, entradas, salidas, ausentes; actividad
   reciente; entradas por hora.
 - **Alumnos** (`#alumnos`): alta con **escaneo guiado del rostro**: la app
   pide cinco poses (de frente, a un lado, al otro, barbilla, de frente) y
   captura sola cuando la toma es buena. Importación de la lista por CSV.
 - **Registros** (`#registros`): historial por fecha, grupo, tipo y nombre;
   estadísticas; gráfica; ausentes; exportación a CSV.
-- **Configuración** (`#config`): plantel, horarios y tolerancia, sensibilidad
+- **Configuración** (`#config`): nombre del plantel, sensibilidad
   del reconocimiento, cámara, cuentas y copia de los datos.
 
 ## Puesta en marcha con Supabase (una vez, 10 minutos)

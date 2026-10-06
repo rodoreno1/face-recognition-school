@@ -145,12 +145,12 @@ const APISupabase = (() => {
   const registroApp = r => ({
     id: r.id, alumnoId: r.student_id, nombre: r.full_name, matricula: r.student_number, grupo: r.group_name,
     turno: TURNO_APP[r.shift] || r.shift, tipo: TIPO_APP[r.type] || r.type, ts: new Date(r.recorded_at).getTime(),
-    fecha: r.record_date, retardo: !!r.late, origen: ORIGEN_APP[r.source] || r.source, distancia: r.distance,
+    fecha: r.record_date, origen: ORIGEN_APP[r.source] || r.source, distancia: r.distance,
   });
   const registroDB = r => ({
     student_id: r.alumnoId, full_name: r.nombre, student_number: r.matricula, group_name: r.grupo,
     shift: TURNO_DB[r.turno] || null, type: TIPO_DB[r.tipo], recorded_at: new Date(r.ts).toISOString(),
-    record_date: r.fecha, late: !!r.retardo, source: ORIGEN_DB[r.origen] || "face",
+    record_date: r.fecha, source: ORIGEN_DB[r.origen] || "face",
     distance: r.distancia == null ? null : r.distancia,
   });
   const registros = {
@@ -202,8 +202,7 @@ const APISupabase = (() => {
 
   /* ---------- Configuración (settings) ---------- */
   const CFG = {
-    plantel: "school_name", entradaMatutino: "morning_entry_time", entradaVespertino: "afternoon_entry_time",
-    toleranciaMin: "tolerance_minutes", umbral: "match_threshold", margen: "match_margin",
+    plantel: "school_name", umbral: "match_threshold", margen: "match_margin",
     cooldownSeg: "cooldown_seconds", confirmaciones: "confirmations", sonido: "sound_enabled",
   };
   const config = {
@@ -212,8 +211,6 @@ const APISupabase = (() => {
       const d = falla(await sb.from("settings").select("*").eq("id", 1).single());
       cfgCache = {};
       for (const [k, c] of Object.entries(CFG)) cfgCache[k] = d[c];
-      cfgCache.entradaMatutino = String(cfgCache.entradaMatutino || "07:00").slice(0, 5);
-      cfgCache.entradaVespertino = String(cfgCache.entradaVespertino || "13:30").slice(0, 5);
       return cfgCache;
     },
     async set(parcial) {

@@ -23,7 +23,6 @@ const fechaLarga = iso => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 };
-const minutosDe = hhmm => { const [h, m] = String(hhmm).split(":").map(Number); return h * 60 + m; };
 const iniciales = nombre => String(nombre || "").trim().split(/\s+/).slice(0, 2).map(p => p[0] || "").join("").toUpperCase();
 const primerNombre = nombre => String(nombre || "").trim().split(/\s+/)[0] || "";
 const descargar = (nombre, contenido, tipo) => {
@@ -140,7 +139,6 @@ const Sonido = (() => {
       const t = ctx.currentTime;
       if (clase === "entrada") { tono(660, 0.12, t); tono(990, 0.18, t + 0.12); }
       else if (clase === "salida") { tono(880, 0.12, t); tono(587, 0.2, t + 0.12); }
-      else if (clase === "retardo") { tono(520, 0.15, t, "triangle"); tono(520, 0.15, t + 0.2, "triangle"); }
       else if (clase === "error") { tono(220, 0.25, t, "square", 0.08); }
       else if (clase === "paso") { tono(1046, 0.09, t, "sine", 0.12); }
       else { tono(440, 0.08, t); }
@@ -179,13 +177,6 @@ async function cargarHoy() {
 }
 
 /* ---------- Lógica de registro (kiosco y registro manual) ---------- */
-function esRetardo(turno, ts) {
-  const cfg = Estado.cfg;
-  const limite = minutosDe(turno === "Vespertino" ? cfg.entradaVespertino : cfg.entradaMatutino) + Number(cfg.toleranciaMin || 0);
-  const d = new Date(ts);
-  return d.getHours() * 60 + d.getMinutes() > limite;
-}
-
 /* Decide el tipo (entrada/salida), aplica la espera y guarda.
    Devuelve { registro } o { duplicado, ultimo }. */
 async function registrarAsistencia(alumno, modo, origen, distancia = null) {
@@ -197,10 +188,9 @@ async function registrarAsistencia(alumno, modo, origen, distancia = null) {
   const ultimo = deHoy[deHoy.length - 1];
   if (ultimo && origen === "facial" && ahora - ultimo.ts < cfg.cooldownSeg * 1000) return { duplicado: true, ultimo };
   const tipo = modo === "auto" ? (ultimo && ultimo.tipo === "entrada" ? "salida" : "entrada") : modo;
-  const primeraEntrada = tipo === "entrada" && !deHoy.some(r => r.tipo === "entrada");
   const registro = await API.registros.agregarConCola({
     alumnoId: alumno.id, nombre: alumno.nombre, matricula: alumno.matricula, grupo: alumno.grupo, turno: alumno.turno,
-    tipo, ts: ahora, fecha, retardo: primeraEntrada && esRetardo(alumno.turno, ahora),
+    tipo, ts: ahora, fecha,
     origen, distancia: distancia == null ? null : Math.round(distancia * 1000) / 1000,
   });
   Estado.hoy.push(registro);
@@ -213,8 +203,7 @@ function resumenHoy() {
   const entradas = regs.filter(r => r.tipo === "entrada"), salidas = regs.filter(r => r.tipo === "salida");
   const dentro = new Set();
   regs.forEach(r => r.tipo === "entrada" ? dentro.add(r.alumnoId) : dentro.delete(r.alumnoId));
-  return { regs, entradas, salidas, dentro: dentro.size, retardos: entradas.filter(r => r.retardo).length,
-           conEntrada: new Set(entradas.map(r => r.alumnoId)).size };
+  return { regs, entradas, salidas, dentro: dentro.size, conEntrada: new Set(entradas.map(r => r.alumnoId)).size };
 }
 
 /* ==========================================================================
@@ -250,7 +239,7 @@ async function mostrarLogin() {
       <p class="login-sub">Control de entradas y salidas por reconocimiento facial.</p>
       <ul class="login-puntos">
         <li>Reconoce al alumno en segundos, sin credencial</li>
-        <li>Registra entradas, salidas y retardos al instante</li>
+        <li>Registra entradas y salidas al instante</li>
         <li>Cuentas con permisos: administración y caseta</li>
       </ul>
     </section>
@@ -396,19 +385,19 @@ async function vistaPanel(root) {
     const stats = $("#pn-stats");
     if (!stats.children.length) {
       stats.innerHTML = [["dentro", "Dentro del plantel", "ok"], ["entradas", "Entradas"], ["salidas", "Salidas", "info"],
-        ["retardos", "Retardos", "warn"], ["ausentes", "Sin entrada hoy", "mal"], ["alumnos", "Alumnos activos"]]
+        ["ausentes", "Sin entrada hoy", "mal"], ["alumnos", "Alumnos activos"]]
         .map(([k, t, c = ""]) => `<div class="stat ${c}"><b data-k="${k}">0</b><span>${t}</span></div>`).join("");
     }
-    const valores = { dentro: r.dentro, entradas: r.entradas.length, salidas: r.salidas.length, retardos: r.retardos,
+    const valores = { dentro: r.dentro, entradas: r.entradas.length, salidas: r.salidas.length,
       ausentes: Math.max(0, activos - r.conEntrada), alumnos: activos };
     for (const [k, v] of Object.entries(valores)) animarNumero($(`[data-k="${k}"]`, stats), v);
 
     const regs = [...r.regs].reverse().slice(0, 14);
     $("#pn-feed").innerHTML = regs.length ? regs.map(x => `
-      <li class="${x.tipo}${x.retardo ? " retardo" : ""}${nuevo && nuevo.id === x.id ? " nuevo" : ""}">
+      <li class="${x.tipo}${nuevo && nuevo.id === x.id ? " nuevo" : ""}">
         <span class="hora">${hora(x.ts)}</span>
         <span class="quien"><b>${esc(x.nombre)}</b><small>${esc(x.grupo || "")} · ${esc(x.matricula)} · ${x.origen === "manual" ? "manual" : "facial"}</small></span>
-        <span class="chip ${x.tipo}">${x.tipo === "entrada" ? "Entrada" : "Salida"}${x.retardo ? " · retardo" : ""}</span>
+        <span class="chip ${x.tipo}">${x.tipo === "entrada" ? "Entrada" : "Salida"}</span>
       </li>`).join("") : `<li class="vacio muted">Todavía no hay registros hoy.</li>`;
 
     $("#pn-aviso").innerHTML = sinRostro
@@ -445,8 +434,8 @@ function pintarGrafica(nodo, sub, entradas) {
 }
 
 function exportarCSV(regs, nombre) {
-  const filas = [["Fecha", "Hora", "Nombre", "Matrícula", "Grupo", "Turno", "Tipo", "Retardo", "Origen"],
-    ...regs.map(r => [r.fecha, horaSeg(r.ts), r.nombre, r.matricula, r.grupo, r.turno, r.tipo, r.retardo ? "Sí" : "No", r.origen])];
+  const filas = [["Fecha", "Hora", "Nombre", "Matrícula", "Grupo", "Turno", "Tipo", "Origen"],
+    ...regs.map(r => [r.fecha, horaSeg(r.ts), r.nombre, r.matricula, r.grupo, r.turno, r.tipo, r.origen])];
   descargar(nombre, aCSV(filas), "text/csv;charset=utf-8");
   toast("CSV descargado");
 }
@@ -535,17 +524,17 @@ async function vistaKiosco(root) {
     const r = resumenHoy();
     const stats = $("#k-stats");
     if (!stats.children.length) {
-      stats.innerHTML = [["dentro", "Dentro", "ok"], ["entradas", "Entradas"], ["salidas", "Salidas"], ["retardos", "Retardos", "warn"]]
+      stats.innerHTML = [["dentro", "Dentro", "ok"], ["entradas", "Entradas"], ["salidas", "Salidas"]]
         .map(([k, t, c = ""]) => `<div class="stat ${c}"><b data-k="${k}">0</b><span>${t}</span></div>`).join("");
     }
-    const v = { dentro: r.dentro, entradas: r.entradas.length, salidas: r.salidas.length, retardos: r.retardos };
+    const v = { dentro: r.dentro, entradas: r.entradas.length, salidas: r.salidas.length };
     for (const [k, n] of Object.entries(v)) animarNumero($(`[data-k="${k}"]`, stats), n);
     const regs = [...r.regs].reverse().slice(0, 6);
     $("#k-feed").innerHTML = regs.length ? regs.map(x => `
       <li class="${x.tipo}${nuevo && nuevo.id === x.id ? " nuevo" : ""}">
         <span class="hora">${hora(x.ts)}</span>
         <span class="quien"><b>${esc(x.nombre)}</b><small>${esc(x.grupo || "")} · ${esc(x.matricula)}</small></span>
-        <span class="chip">${x.tipo === "entrada" ? "Entrada" : "Salida"}${x.retardo ? " · retardo" : ""}</span>
+        <span class="chip">${x.tipo === "entrada" ? "Entrada" : "Salida"}</span>
       </li>`).join("") : `<li class="vacio">Todavía no hay registros hoy.</li>`;
   }
 
@@ -575,10 +564,10 @@ async function vistaKiosco(root) {
       return;
     }
     const reg = r.registro;
-    const clase = reg.retardo ? "retardo" : reg.tipo;
+    const clase = reg.tipo;
     Sonido.tocar(clase);
     const k = $("#kiosco");
-    k.classList.remove("flash-entrada", "flash-salida", "flash-retardo");
+    k.classList.remove("flash-entrada", "flash-salida");
     void k.offsetWidth;
     k.classList.add("flash-" + clase);
     mostrarResultado(`
@@ -587,7 +576,7 @@ async function vistaKiosco(root) {
         <small class="eyebrow">${reg.tipo === "entrada" ? "Entrada registrada" : "Salida registrada"}${reg.pendiente ? " · se enviará al reconectar" : ""}</small>
         <h3>${esc(alumno.nombre)}</h3>
         <p>${esc(alumno.grupo || "")} · ${esc(alumno.matricula)} · ${esc(alumno.turno || "")}</p>
-        <div class="res-hora">${hora(reg.ts)}${reg.retardo ? `<span class="chip">Retardo</span>` : ""}</div>
+        <div class="res-hora">${hora(reg.ts)}</div>
       </div>
       <div class="res-check">${reg.tipo === "entrada" ? "✓" : "↩"}</div>`, clase);
     refrescarPanel(reg);
@@ -727,8 +716,8 @@ function abrirRegistroManual(modo, alTerminar) {
       const a = Estado.alumnos.find(x => x.id === b.closest("li").dataset.id);
       try {
         const r = await registrarAsistencia(a, tipo, "manual");
-        Sonido.tocar(r.registro.retardo ? "retardo" : tipo);
-        toast(`${tipo === "entrada" ? "Entrada" : "Salida"} de ${a.nombre} a las ${hora(r.registro.ts)}${r.registro.retardo ? " (retardo)" : ""}`);
+        Sonido.tocar(tipo);
+        toast(`${tipo === "entrada" ? "Entrada" : "Salida"} de ${a.nombre} a las ${hora(r.registro.ts)}`);
         m.cerrar(); if (alTerminar) alTerminar(r.registro);
       } catch (e) { toast(e.message, "mal"); }
     });
@@ -1057,17 +1046,16 @@ async function vistaRegistros(root) {
   function pintar() {
     const entradas = filtrados.filter(r => r.tipo === "entrada");
     const alumnosConEntrada = new Set(entradas.map(r => r.alumnoId));
-    const retardos = entradas.filter(r => r.retardo).length;
     const dias = new Set(filtrados.map(r => r.fecha)).size || 1;
     $("#rg-sub").textContent = f.desde === f.hasta ? fechaLarga(f.desde) : `${fechaLarga(f.desde)} — ${fechaLarga(f.hasta)}`;
     $("#rg-stats").innerHTML = [
       ["Registros", filtrados.length, ""], ["Alumnos con entrada", alumnosConEntrada.size, "ok"],
-      ["Retardos", retardos, retardos ? "warn" : ""], ["Promedio por día", Math.round(filtrados.length / dias), "info"],
+      ["Promedio por día", Math.round(filtrados.length / dias), "info"],
     ].map(([k, v, c]) => `<div class="stat ${c}"><b>${v}</b><span>${k}</span></div>`).join("");
     pintarGrafica($("#rg-grafica"), $("#gr-sub"), entradas);
     $("#rg-tbody").innerHTML = filtrados.length ? filtrados.slice(0, 400).map(r => `<tr>
       <td>${r.fecha}</td><td class="mono">${horaSeg(r.ts)}</td><td><b>${esc(r.nombre)}</b></td><td class="mono">${esc(r.matricula)}</td>
-      <td>${esc(r.grupo || "")}</td><td><span class="chip ${r.tipo}">${r.tipo === "entrada" ? "Entrada" : "Salida"}</span>${r.retardo ? ` <span class="chip warn">Retardo</span>` : ""}</td>
+      <td>${esc(r.grupo || "")}</td><td><span class="chip ${r.tipo}">${r.tipo === "entrada" ? "Entrada" : "Salida"}</span></td>
       <td class="muted">${r.origen === "manual" ? "Manual" : "Facial"}</td>
       <td><button class="btn chico ghost peligro" data-del="${r.id}" title="Eliminar registro">🗑</button></td></tr>`).join("")
       : `<tr><td colspan="8" class="muted centro">No hay registros con esos filtros.</td></tr>`;
@@ -1114,14 +1102,8 @@ async function vistaConfig(root) {
     <div class="admin-cab"><div><h2>Configuración</h2><p class="muted">Los cambios se guardan al instante${API.modoDemo ? " en este navegador" : " para todos los equipos"}.</p></div></div>
     <div class="cfg-grid">
       <div class="tarjeta cfg">
-        <h4>Plantel y horarios</h4>
+        <h4>Plantel</h4>
         <label>Nombre del plantel<input class="input" data-cfg="plantel" value="${esc(cfg.plantel)}"></label>
-        <div class="fila">
-          <label>Entrada matutino<input type="time" class="input" data-cfg="entradaMatutino" value="${cfg.entradaMatutino}"></label>
-          <label>Entrada vespertino<input type="time" class="input" data-cfg="entradaVespertino" value="${cfg.entradaVespertino}"></label>
-          <label>Tolerancia (min)<input type="number" min="0" max="120" class="input" data-cfg="toleranciaMin" value="${cfg.toleranciaMin}"></label>
-        </div>
-        <p class="muted chico" style="margin-top:10px">Una entrada después de la hora más la tolerancia se marca como retardo. Solo cuenta la primera entrada del día.</p>
       </div>
       <div class="tarjeta cfg">
         <h4>Reconocimiento</h4>
