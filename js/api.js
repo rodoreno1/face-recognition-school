@@ -29,6 +29,7 @@ const APISupabase = (() => {
     if (/Invalid login credentials/i.test(m)) return "Correo o contraseña incorrectos.";
     if (/Email not confirmed/i.test(m)) return "La cuenta no está confirmada. En Supabase desactiva «Confirm email» (Authentication → Providers → Email) o confirma el correo.";
     if (/Signups not allowed|signup is disabled/i.test(m)) return "El alta de cuentas está desactivada en Supabase (Authentication → Sign In / Up → Allow new users to sign up).";
+    if (/Email (signups|logins) are disabled/i.test(m)) return "El proveedor de correo está apagado en Supabase: en Authentication → Providers → Email activa «Enable Email provider».";
     if (/already registered|already exists|already been registered/i.test(m)) return "Ya existe una cuenta con ese correo.";
     if (/Password should be/i.test(m)) return "La contraseña no cumple el mínimo que pide Supabase (6 caracteres).";
     if (/rate limit/i.test(m)) return "Demasiadas peticiones seguidas. Espera un minuto.";
