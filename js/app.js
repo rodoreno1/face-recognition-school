@@ -488,13 +488,29 @@ async function vistaKiosco(root) {
   const estadoTxt = $("#k-estado-txt"), estadoBox = $("#k-estado");
   let modo = modoGuardado, activo = true, comparador = null, timerResultado = null;
   let racha = { id: null, n: 0, descs: [] }, desconocidos = 0;
-  const mostradosCooldown = {}, fotos = {};
+  const fotos = {};
   const dejar = [];
+
+  /* Ritmo del kiosco. Leer la cámara sin parar satura el equipo y hace que los
+     mensajes parpadeen; se lee con calma y, tras cada resultado, se hace una
+     pausa antes de buscar al siguiente alumno. */
+  const RITMO = { sinRostro: 500, conRostro: 240, confirmando: 170, enPausa: 250 };
+  const PAUSA = { registro: 4000, repetido: 3000, desconocido: 2500 };
+  let pausa = { hasta: 0, texto: "", clase: "" };
+  const pausar = (ms, texto, clase) => { pausa = { hasta: Date.now() + ms, texto, clase }; racha = { id: null, n: 0, descs: [] }; desconocidos = 0; };
 
   const setEstado = (txt, clase = "") => {
     if (estadoTxt.textContent !== txt) estadoTxt.textContent = txt;
     estadoBox.className = "k-estado " + clase;
     cam.classList.toggle("buscando", clase === "");
+  };
+  /* Los estados "flojos" (buscando, analizando, acércate) solo se muestran
+     cuando se repiten dos lecturas seguidas: evita el parpadeo entre cuadros. */
+  let propuesto = { txt: "", n: 0 };
+  const proponerEstado = (txt, clase = "") => {
+    if (estadoTxt.textContent === txt) { propuesto = { txt, n: 0 }; return; }
+    propuesto = propuesto.txt === txt ? { txt, n: propuesto.n + 1 } : { txt, n: 1 };
+    if (propuesto.n >= 2) setEstado(txt, clase);
   };
   const vacio = () => `<div class="res-vacio"><div class="res-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>
     <h3>Mira a la cámara</h3><p>Tu ${modo === "salida" ? "salida" : modo === "entrada" ? "entrada" : "entrada o salida"} se registra sola.</p></div>`;
@@ -555,12 +571,10 @@ async function vistaKiosco(root) {
     const foto = await fotoAlumno(alumno);
     if (r.duplicado) {
       const hace = Math.round((Date.now() - r.ultimo.ts) / 1000);
-      if (!mostradosCooldown[alumno.id] || Date.now() - mostradosCooldown[alumno.id] > 4000) {
-        mostradosCooldown[alumno.id] = Date.now();
-        mostrarResultado(`<div class="res-foto">${fotoDe(alumno, foto)}</div>
-          <div class="res-info"><small class="eyebrow">Ya registrado</small><h3>${esc(alumno.nombre)}</h3>
-          <p>${r.ultimo.tipo === "entrada" ? "Entrada" : "Salida"} a las ${hora(r.ultimo.ts)} (hace ${hace} s)</p></div>`, "repetido", 3000);
-      }
+      mostrarResultado(`<div class="res-foto">${fotoDe(alumno, foto)}</div>
+        <div class="res-info"><small class="eyebrow">Ya registrado</small><h3>${esc(alumno.nombre)}</h3>
+        <p>${r.ultimo.tipo === "entrada" ? "Entrada" : "Salida"} a las ${hora(r.ultimo.ts)} (hace ${hace} s)</p></div>`, "repetido", PAUSA.repetido);
+      pausar(PAUSA.repetido, `${primerNombre(alumno.nombre)} ya estaba registrado`, "aviso");
       return;
     }
     const reg = r.registro;
@@ -629,10 +643,18 @@ async function vistaKiosco(root) {
 
   /* ----- bucle de detección ----- */
   const VERDE = "rgba(134,239,172,.95)", ORO = "rgba(245,184,46,.95)", BLANCO = "rgba(255,255,255,.75)", GRIS = "rgba(255,255,255,.35)";
+  const limpiarCanvas = () => { canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); };
   let ocupado = false;
   async function ciclo() {
     if (!activo) return;
-    if (!ocupado && video.readyState >= 2) {
+    let espera = RITMO.sinRostro;
+    if (Date.now() < pausa.hasta) {
+      // Pausa tras un resultado: la cámara sigue, pero no se lee hasta que pase.
+      const seg = Math.ceil((pausa.hasta - Date.now()) / 1000);
+      setEstado(`${pausa.texto} · siguiente en ${seg} s`, pausa.clase);
+      limpiarCanvas();
+      espera = RITMO.enPausa;
+    } else if (!ocupado && video.readyState >= 2) {
       ocupado = true;
       try {
         const rostros = await Face.detectar(video);
@@ -643,6 +665,13 @@ async function vistaKiosco(root) {
         let listo = null;
         rostros.forEach((r, i) => {
           if (i !== principal) { etiquetas[i] = { texto: "", color: GRIS }; return; }
+          // Un rostro pequeño está lejos: no se intenta reconocer a quien pasa al fondo.
+          if (r.detection.box.width < video.videoWidth * 0.12) {
+            racha = { id: null, n: 0, descs: [] }; desconocidos = 0;
+            etiquetas[i] = { texto: "", color: GRIS };
+            proponerEstado("Acércate a la cámara", "aviso");
+            return;
+          }
           const m = comparador.identificar(r.descriptor);
           if (m.alumno && m.confiable) {
             if (racha.id === m.alumno.id) { racha.n++; racha.descs.push(r.descriptor); }
@@ -662,29 +691,36 @@ async function vistaKiosco(root) {
               // Dentro del umbral pero sin ventaja clara sobre otro alumno: pide una mejor toma.
               desconocidos = 0;
               etiquetas[i] = { texto: "Verificando…", color: ORO };
-              setEstado("Acércate un poco y mira de frente", "aviso");
+              proponerEstado("Acércate un poco y mira de frente", "aviso");
             } else {
               desconocidos++;
-              const seguro = desconocidos > 6;
-              etiquetas[i] = { texto: seguro ? "No registrado" : "", color: BLANCO };
-              if (!comparador.vacio) setEstado(seguro ? "Rostro no registrado" : "Analizando…", seguro ? "aviso" : "");
+              etiquetas[i] = { texto: "", color: BLANCO };
+              if (desconocidos > 4) {
+                // Varias lecturas seguidas sin coincidencia: se avisa una vez y se descansa.
+                etiquetas[i] = { texto: "No registrado", color: BLANCO };
+                pausar(PAUSA.desconocido, "Rostro no registrado", "aviso");
+              } else if (!comparador.vacio) proponerEstado("Analizando…");
             }
           }
         });
         if (!rostros.length) {
           racha = { id: null, n: 0, descs: [] }; desconocidos = 0;
-          if (!comparador.vacio) setEstado("Buscando rostros…");
+          if (!comparador.vacio) proponerEstado("Buscando rostros…");
         }
         Face.dibujar(canvas, video, rostros, etiquetas);
         if (listo) {
           // Segunda verificación con el promedio de los cuadros: quita el ruido de un cuadro aislado.
           const m2 = comparador.identificar(Face.promediar(listo.descs));
-          if (m2.alumno && m2.alumno.id === listo.alumno.id) await alReconocer(listo.alumno, m2.distancia);
+          if (m2.alumno && m2.alumno.id === listo.alumno.id) {
+            await alReconocer(listo.alumno, m2.distancia);
+            if (Date.now() >= pausa.hasta) pausar(PAUSA.registro, `Registrado: ${primerNombre(listo.alumno.nombre)}`, "ok");
+          }
         }
+        espera = rostros.length ? (racha.n ? RITMO.confirmando : RITMO.conRostro) : RITMO.sinRostro;
       } catch (e) { console.error(e); }
       ocupado = false;
     }
-    setTimeout(ciclo, 90);
+    setTimeout(ciclo, espera);
   }
   ciclo();
 }
