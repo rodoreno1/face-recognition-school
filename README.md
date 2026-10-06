@@ -69,7 +69,9 @@ js/demo.js           La misma interfaz sobre localStorage (modo demostración)
 js/face.js           Cámara, modelos, calidad de la toma, pose, comparación
 js/app.js            Interfaz: acceso, panel, kiosco, alumnos (escaneo guiado),
                      registros, configuración
-supabase/schema.sql  Tablas, roles, políticas RLS y tiempo real
+supabase/schema.sql  Tablas (students, attendance_records, settings, profiles),
+                     roles, políticas RLS y tiempo real. El esquema está en
+                     inglés; js/api.js traduce a los nombres en español de la app
 models/              Pesos de los tres modelos (detector, puntos faciales,
                      reconocimiento), servidos localmente
 vendor/face-api.js   Reconocimiento (@vladmandic/face-api, MIT)
